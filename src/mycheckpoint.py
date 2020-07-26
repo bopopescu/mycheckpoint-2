@@ -77,7 +77,7 @@ Available commands:
     parser.add_option("", "--purge-days", dest="purge_days", type="int", help="Purge data older than specified amount of days (default: 182)")
     parser.add_option("", "--disable-bin-log", dest="disable_bin_log", action="store_true", help="Disable binary logging (binary logging enabled by default)")
     parser.add_option("", "--skip-disable-bin-log", dest="disable_bin_log", action="store_false", help="Skip disabling the binary logging (this is default behaviour; binary logging enabled by default)")
-    parser.add_option("", "--skip-check-replication", dest="skip_check_replication", action="store_true", help="Skip checking on master/slave status variables")
+    parser.add_option("", "--skip-check-replication", dest="skip_check_replication", action="store_true", help="Skip checking on main/subordinate status variables")
     parser.add_option("-o", "--force-os-monitoring", dest="force_os_monitoring", action="store_true", help="Monitor OS even if monitored host does does nto appear to be the local host. Use when you are certain the monitored host is local")
     parser.add_option("", "--skip-alerts", dest="skip_alerts", action="store_true", help="Skip evaluating alert conditions as well as sending email notifications")
     parser.add_option("", "--skip-emails", dest="skip_emails", action="store_true", help="Skip sending email notifications")
@@ -328,8 +328,8 @@ def prompt_deploy_instructions():
     print "-- Make sure the user has ALL PRIVILEGES on the `%s` schema. e.g." % database_name
     print "--   GRANT ALL ON `%s`.* TO 'my_user'@'my_host' IDENTIFIED BY 'my_password'" % database_name
     print "-- The user will have to have the SUPER privilege in order to disable binary logging"
-    print "-- - Otherwise, use --skip-disable-bin-log (but then be aware that slaves replicate this server's status)"
-    print "-- In order to read master and slave status, the user must also be granted with REPLICATION CLIENT or SUPER privileges"
+    print "-- - Otherwise, use --skip-disable-bin-log (but then be aware that subordinates replicate this server's status)"
+    print "-- In order to read main and subordinate status, the user must also be granted with REPLICATION CLIENT or SUPER privileges"
     print "-- - Otherwise, use --skip-check-replication"
     print "--"
 
@@ -526,9 +526,9 @@ def get_global_variables():
         "skip_external_locking",
         "skip_networking",
         "skip_show_database",
-        "slave_compressed_protocol",
-        "slave_net_timeout",
-        "slave_transaction_retries",
+        "subordinate_compressed_protocol",
+        "subordinate_net_timeout",
+        "subordinate_transaction_retries",
         "slow_launch_time",
         "slow_query_log",
         "sort_buffer_size",
@@ -750,36 +750,36 @@ def fetch_status_variables():
     
     verbose("Global status & variables recorded")
 
-    # Master & slave status
-    status_dict["master_status_position"] = None
-    status_dict["master_status_file_number"] = None
-    slave_status_variables = [
-        "Read_Master_Log_Pos",
+    # Main & subordinate status
+    status_dict["main_status_position"] = None
+    status_dict["main_status_file_number"] = None
+    subordinate_status_variables = [
+        "Read_Main_Log_Pos",
         "Relay_Log_Pos",
-        "Exec_Master_Log_Pos",
+        "Exec_Main_Log_Pos",
         "Relay_Log_Space",
-        "Seconds_Behind_Master",
+        "Seconds_Behind_Main",
         ]
-    for variable_name in slave_status_variables:
+    for variable_name in subordinate_status_variables:
         status_dict[variable_name.lower()] = None
     if not options.skip_check_replication:
         try:
             query = "SHOW MASTER STATUS"
-            master_status = get_row(query)
-            if master_status:
-                status_dict["master_status_position"] = master_status["Position"]
-                log_file_name = master_status["File"]
+            main_status = get_row(query)
+            if main_status:
+                status_dict["main_status_position"] = main_status["Position"]
+                log_file_name = main_status["File"]
                 log_file_number = int(log_file_name.rsplit(".")[-1])
-                status_dict["master_status_file_number"] = log_file_number
+                status_dict["main_status_file_number"] = log_file_number
             query = "SHOW SLAVE STATUS"
-            slave_status = get_row(query)
-            if slave_status:
-                for variable_name in slave_status_variables:
-                    status_dict[variable_name.lower()] = slave_status[variable_name]
-            verbose("Master and slave status recorded")
+            subordinate_status = get_row(query)
+            if subordinate_status:
+                for variable_name in subordinate_status_variables:
+                    status_dict[variable_name.lower()] = subordinate_status[variable_name]
+            verbose("Main and subordinate status recorded")
         except:
             # An exception can be thrown if the user does not have enough privileges:
-            print_error("Cannot show master & slave status. Skipping")
+            print_error("Cannot show main & subordinate status. Skipping")
             pass
 
     # OS (linux) load average
@@ -894,7 +894,7 @@ def fetch_status_variables():
 def get_status_variables_columns():
     """
     Return all columns participating in the status variables table. Most of these are STATUS variables.
-    Others are parameters. Others yet represent slave or master status etc.
+    Others are parameters. Others yet represent subordinate or main status etc.
     """
     status_dict = fetch_status_variables()
     return sorted_list(status_dict.keys())
@@ -912,7 +912,7 @@ def get_known_signed_diff_status_variables():
         "threads_running",
         "open_table_definitions",
         "open_tables",
-        "slave_open_temp_tables",
+        "subordinate_open_temp_tables",
         "qcache_free_blocks",
         "qcache_free_memory",
         "qcache_queries_in_cache",
@@ -926,12 +926,12 @@ def get_known_signed_diff_status_variables():
         "innodb_buffer_pool_pages_misc",
         "key_blocks_unused",
         "key_cache_block_size",
-        "master_status_position",
-        "read_master_log_pos",
+        "main_status_position",
+        "read_main_log_pos",
         "relay_log_pos",
-        "exec_master_log_pos",
+        "exec_main_log_pos",
         "relay_log_space",
-        "seconds_behind_master",
+        "seconds_behind_main",
         ]
     return known_signed_diff_status_variables
 
@@ -2472,14 +2472,14 @@ Threads:
     Created: ', threads_created_psec, '/sec
 
 Replication:
-    Master status file number: ', IFNULL(master_status_file_number, 'N/A'), ', position: ', IFNULL(master_status_position, 'N/A'), '
+    Main status file number: ', IFNULL(main_status_file_number, 'N/A'), ', position: ', IFNULL(main_status_position, 'N/A'), '
     Relay log space limit: ', IFNULL(relay_log_space_limit, 'N/A'), ', used: ', IFNULL(relay_log_space, 'N/A'), '  (',
         IFNULL(relay_log_space_used_percent, 'N/A'), '%)
-    Seconds behind master: ', IFNULL(seconds_behind_master, 'N/A'), '
-    Estimated time for slave to catch up: ', IFNULL(IF(seconds_behind_master_psec >= 0, NULL, FLOOR(-seconds_behind_master/seconds_behind_master_psec)), 'N/A'), ' seconds (',
-        IFNULL(FLOOR(IF(seconds_behind_master_psec >= 0, NULL, -seconds_behind_master/seconds_behind_master_psec)/(60*60*24)), 'N/A'), ' days, ',
-        IFNULL(SEC_TO_TIME(IF(seconds_behind_master_psec >= 0, NULL, -seconds_behind_master/seconds_behind_master_psec) % (60*60*24)), 'N/A'), ' hours)  ETA: ',
-        IFNULL(TIMESTAMP(ts) + INTERVAL estimated_slave_catchup_seconds SECOND, 'N/A'), '
+    Seconds behind main: ', IFNULL(seconds_behind_main, 'N/A'), '
+    Estimated time for subordinate to catch up: ', IFNULL(IF(seconds_behind_main_psec >= 0, NULL, FLOOR(-seconds_behind_main/seconds_behind_main_psec)), 'N/A'), ' seconds (',
+        IFNULL(FLOOR(IF(seconds_behind_main_psec >= 0, NULL, -seconds_behind_main/seconds_behind_main_psec)/(60*60*24)), 'N/A'), ' days, ',
+        IFNULL(SEC_TO_TIME(IF(seconds_behind_main_psec >= 0, NULL, -seconds_behind_main/seconds_behind_main_psec) % (60*60*24)), 'N/A'), ' hours)  ETA: ',
+        IFNULL(TIMESTAMP(ts) + INTERVAL estimated_subordinate_catchup_seconds SECOND, 'N/A'), '
 ') AS report
           FROM
             ${database_name}.sv_report_${view_name_extension}
@@ -4114,8 +4114,8 @@ def create_status_variables_views_and_aggregations():
             ROUND(100*threads_connected/NULLIF(max_connections, 0), 1) AS threads_connected_used_percent,
             threads_running,
 
-            master_status_file_number,
-            master_status_position,
+            main_status_file_number,
+            main_status_position,
             relay_log_space_limit,
             relay_log_space_limit/1024/1024 AS relay_log_space_limit_mb,
             max_relay_log_size,
@@ -4124,9 +4124,9 @@ def create_status_variables_views_and_aggregations():
             relay_log_space,
             relay_log_space/1024/1024 AS relay_log_space_mb,
             ROUND(100*relay_log_space/NULLIF(relay_log_space_limit, 0), 1) AS relay_log_space_used_percent,
-            seconds_behind_master,
-            seconds_behind_master_psec,
-            IF(seconds_behind_master_psec >= 0, NULL, FLOOR(-seconds_behind_master/seconds_behind_master_psec)) AS estimated_slave_catchup_seconds,
+            seconds_behind_main,
+            seconds_behind_main_psec,
+            IF(seconds_behind_main_psec >= 0, NULL, FLOOR(-seconds_behind_main/seconds_behind_main_psec)) AS estimated_subordinate_catchup_seconds,
 
             ROUND((os_loadavg_millis/1000), 2) AS os_loadavg,
             os_total_cpu_cores,
@@ -4204,9 +4204,9 @@ def create_status_variables_views_and_aggregations():
         ("threads_created_psec", "threads_created_psec", True, False, ["9932cc", ]),
 
         ("relay_log_space_limit_mb, relay_log_space_mb", "relay_log_used_mb", True, False, ["191970", ]),
-        ("seconds_behind_master", "seconds_behind_master", True, True, ["#005E5E", "#0F006C", "#538F00", ]),
-        ("seconds_behind_master_psec", "seconds_behind_master_psec", True, False, ["4682b4", ]),
-        ("estimated_slave_catchup_seconds", "estimated_slave_catchup_seconds", True, False, ["9932cc", ]),
+        ("seconds_behind_main", "seconds_behind_main", True, True, ["#005E5E", "#0F006C", "#538F00", ]),
+        ("seconds_behind_main_psec", "seconds_behind_main_psec", True, False, ["4682b4", ]),
+        ("estimated_subordinate_catchup_seconds", "estimated_subordinate_catchup_seconds", True, False, ["9932cc", ]),
 
         ("os_cpu_utilization_percent", "os_cpu_utilization_percent", True, True, ["ff8c00", ]),
         ("os_loadavg, os_total_cpu_cores", "os_loadavg", True, False, ["dc143c", "7fffd4", ]),
@@ -4254,7 +4254,7 @@ def create_status_variables_views_and_aggregations():
         "connections_psec",
         "aborted_connects_psec",
         "threads_created_psec",
-        "seconds_behind_master",
+        "seconds_behind_main",
         "os_loadavg",
         "os_cpu_utilization_percent",
         "os_mem_used_mb",
@@ -4280,7 +4280,7 @@ def create_status_variables_views_and_aggregations():
         table_cache_use, opened_tables_psec,
         connections, connections_usage,
         thread_cache_use, threads_created_psec,
-        relay_log_used_mb, seconds_behind_master, seconds_behind_master_psec,
+        relay_log_used_mb, seconds_behind_main, seconds_behind_main_psec,
         uptime_percent,
         os_cpu_utilization_percent,
         os_loadavg,
@@ -4295,7 +4295,7 @@ def create_status_variables_views_and_aggregations():
             ("Questions", "DML, questions, tmp_tables"),
             ("Resources", "connections, threads_created_psec, opened_tables_psec"),
             ("Caches", "myisam_key_hit, thread_cache_use, table_cache_use"),
-            ("Vitals", "seconds_behind_master, connections_usage, uptime_percent"),
+            ("Vitals", "seconds_behind_main, connections_usage, uptime_percent"),
             ("OS", "os_memory, os_cpu_utilization_percent, os_loadavg"),
             ("", "os_page_io, os_swap_io, os_mountpoints_usage_percent"),
         ]
